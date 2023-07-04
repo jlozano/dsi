@@ -10,6 +10,7 @@ This is a HuggingFace implementation of the Differentiable Search Index.
 
 
 # Setup instructions
+**NOTE** Tested with `Python 3.8.10`.
 ```
 # 0) clone this repo
 # 1) setup virtual env
