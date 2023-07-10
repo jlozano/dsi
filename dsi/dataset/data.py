@@ -18,7 +18,7 @@ def search_dataset(
         # do something better here.
         return tokenizer(
             text=batch["text"],
-            text_target=["doc_id"],
+            text_target=batch["doc_id"],
             max_length=max_length,
             truncation=True,
         )
