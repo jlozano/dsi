@@ -93,9 +93,9 @@ def main():
     wandb.init(project="DSI", name="test")
 
     if args.load_dataset_from_disk:
-        train_path = os.path.join(args.cache_dir, "train.json")
-        val_path = os.path.join(args.cache_dir, "val.json")
-        index_path = os.path.join(args.cache_dir, "index.json")
+        train_path = os.path.join(args.cache_dir, "train")
+        val_path = os.path.join(args.cache_dir, "val")
+        index_path = os.path.join(args.cache_dir, "index")
         train = datasets.load_from_disk(train_path)
         val = datasets.load_from_disk(val_path)
         index = datasets.load_from_disk(index_path)

@@ -11,7 +11,21 @@ def search_dataset(
     seed: int,
     ratio_indexing_to_retrieval: float = 32,
 ) -> datasets.Dataset:
-    """Create a search dataset from a raw dataset."""
+    # NOTE: make sure to tokenize and truncate before building
+    # indexing dataset otherwise we use a ton of disk space.
+    def tokenize(batch):
+        # NOTE: we potentially truncate the doc id, so we should probably
+        # do something better here.
+        return tokenizer(
+            text=batch["text"],
+            text_target=["doc_id"],
+            max_length=max_length,
+            truncation=True,
+        )
+
+    queries = queries.map(tokenize, batched=True)
+    indexing = indexing.map(tokenize, batched=True)
+
     num_indexing_required = len(queries) * ratio_indexing_to_retrieval
     if num_indexing_required > len(indexing):
         upsample = num_indexing_required // len(indexing)
@@ -32,20 +46,8 @@ def search_dataset(
             .select(range(num_indexing_required))
         )
 
-    merged = (
+    return (
         datasets.concatenate_datasets([queries, indexing])
         .shuffle(seed=seed)
         .flatten_indices()
     )
-
-    def tokenize(batch):
-        # NOTE: we potentially truncate the doc id, so we should probably
-        # do something better here.
-        return tokenizer(
-            text=batch["text"],
-            text_target=["doc_id"],
-            max_length=max_length,
-            truncation=True,
-        )
-
-    return merged.map(tokenize, batched=True)

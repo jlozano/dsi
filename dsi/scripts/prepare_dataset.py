@@ -27,9 +27,9 @@ if __name__ == "__main__":
         args.cache_dir, args.num_train, args.num_val, args.seed
     )
 
-    train_path = os.path.join(args.out_dir, "train.json")
-    val_path = os.path.join(args.out_dir, "val.json")
-    index_path = os.path.join(args.out_dir, "index.json")
+    train_path = os.path.join(args.out_dir, "train")
+    val_path = os.path.join(args.out_dir, "val")
+    index_path = os.path.join(args.out_dir, "index")
     ds["train"].save_to_disk(train_path)
     ds["val"].save_to_disk(val_path)
     ds["index"].save_to_disk(index_path)
