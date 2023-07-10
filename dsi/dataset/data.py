@@ -17,11 +17,15 @@ def search_dataset(
     num_indexing_required = len(queries) * ratio_indexing_to_retrieval
     if num_indexing_required > len(indexing):
         upsample = num_indexing_required // len(indexing)
+        to_concat = [indexing] * upsample
         num_remaining = num_indexing_required - (upsample * len(indexing))
-        remaining = (
-            indexing.shuffle(seed=seed).flatten_indices().select(range(num_remaining))
-        )
-        indexing = datasets.concatenate_datasets([indexing] * upsample + [remaining])
+        if num_remaining > 0:
+            to_concat.append(
+                indexing.shuffle(seed=seed)
+                .flatten_indices()
+                .select(range(num_remaining))
+            )
+        indexing = datasets.concatenate_datasets(to_concat)
     else:
         # don't use slice notation because we want to return a Dataset
         indexing = (
