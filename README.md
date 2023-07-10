@@ -2,7 +2,9 @@
 This is a HuggingFace implementation of the Differentiable Search Index.
 
 # Code references
+* https://colab.research.google.com/drive/1RFBIkTZEqbRt0jxpTHgRudYJBZTD3Szn?usp=sharing#scrollTo=AksRL_QyyYZj
 * https://github.com/ArvinZhuang/DSI-transformers/tree/main
+
 
 # Papers
 * [Transformer Memory as a Differentiable Search Index](https://arxiv.org/abs/2202.06991)
