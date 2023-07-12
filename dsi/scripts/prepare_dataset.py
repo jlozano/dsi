@@ -13,10 +13,16 @@ if __name__ == "__main__":
         "--cache_dir", required=True, help="Directory to cache the full dataset"
     )
     parser.add_argument(
-        "--num_train", type=int, default=10000, help="Number of training examples"
+        "--num_train",
+        type=int,
+        default=10000,
+        help="Number of training query and doc pairs",
     )
     parser.add_argument(
-        "--num_val", type=int, default=2000, help="Number of validation examples"
+        "--num_val",
+        type=int,
+        default=2000,
+        help="Number of validation query and doc pairs",
     )
     parser.add_argument(
         "--seed", type=int, default=42, help="Random seed for shuffling"

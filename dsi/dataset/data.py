@@ -1,11 +1,12 @@
 import datasets
 
 from transformers import PreTrainedTokenizer
+from typing import Optional
 
 
 def search_dataset(
     queries: datasets.Dataset,
-    indexing: datasets.Dataset,
+    indexing: Optional[datasets.Dataset],
     tokenizer: PreTrainedTokenizer,
     max_length: int,
     seed: int,
@@ -24,6 +25,9 @@ def search_dataset(
         )
 
     queries = queries.map(tokenize, batched=True)
+    if ratio_indexing_to_retrieval == 0 or indexing is None:
+        return queries.shuffle(seed=seed).flatten_indices()
+
     indexing = indexing.map(tokenize, batched=True)
 
     num_indexing_required = len(queries) * ratio_indexing_to_retrieval

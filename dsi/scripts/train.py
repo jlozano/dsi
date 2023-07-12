@@ -17,6 +17,9 @@ from typing import Dict, Any
 
 
 def compute_metrics(preds: EvalPrediction) -> Dict[str, Any]:
+    """The only metric that really makes sense here is accuracy, since we are
+    only using a single beam. In theory we could use more beams but this is slow and only gives us the added benefit of
+    computing hits at 1 (since we only get the final top beam not all k top beams."""
     equals = (preds.label_ids == preds.predictions).astype(int)
     accuracy = equals.prod(axis=1).sum() / len(equals)
     return {
@@ -47,13 +50,13 @@ def main():
         "--num_train",
         type=int,
         default=10000,
-        help="Number of training examples, only used if --load_dataset_from_disk is not used",
+        help="Number of training query and doc pairs, only used if --load_dataset_from_disk is not used",
     )
     parser.add_argument(
         "--num_val",
         type=int,
         default=2000,
-        help="Number of validation examples, only used if --load_dataset_from_disk is not used",
+        help="Number of validation query and doc pairs, only used if --load_dataset_from_disk is not used",
     )
     parser.add_argument(
         "--seed",
@@ -75,10 +78,16 @@ def main():
         help="Maximum number of tokens in a document, if -1 then the maximum length associated with the model is used",
     )
     parser.add_argument(
-        "--ratio_indexing_to_retrieval",
+        "--ratio_indexing_to_retrieval_training",
         type=float,
         default=32,
-        help="Ratio of indexing examples to retrieval examples",
+        help="Ratio of indexing examples to retrieval examples in training set",
+    )
+    parser.add_argument(
+        "--ratio_indexing_to_retrieval_validation",
+        type=float,
+        default=0,
+        help="Ratio of indexing examples to retrieval examples in validation set",
     )
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument(
@@ -122,7 +131,7 @@ def main():
         tokenizer,
         args.max_doc_len,
         seed=args.seed,
-        ratio_indexing_to_retrieval=args.ratio_indexing_to_retrieval,
+        ratio_indexing_to_retrieval=args.ratio_indexing_to_retrieval_training,
     )
 
     val = search_dataset(
@@ -131,7 +140,7 @@ def main():
         tokenizer,
         args.max_doc_len,
         seed=args.seed,
-        ratio_indexing_to_retrieval=args.ratio_indexing_to_retrieval,
+        ratio_indexing_to_retrieval=args.ratio_indexing_to_retrieval_validation,
     )
 
     training_args = Seq2SeqTrainingArguments(
