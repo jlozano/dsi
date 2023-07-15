@@ -13,13 +13,13 @@ This is a HuggingFace implementation of the Differentiable Search Index.
 
 # Setup instructions
 **NOTE** 
-* Works with `Python 3.8.10`, `Python 3.9.13`
+* Works with `Python 3.8.10`, `Python 3.9.13`, `Python 3.9.17`
 * For `Python 3.10.11` -- pip installing requirements seems to work, but get an error when trying to import `datasets`
 * For `Python 3.11.1` --  pip hangs trying to install multiprocess
 ```
 # 0) clone this repo
 # 1) setup virtual env
-$ python3 -m venv ./venv
+$ python3 -m venv .venv
 # 2) activate venv
 $ source .venv/bin/activate
 # 3) install requirements
