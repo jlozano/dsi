@@ -1,30 +1,97 @@
 import argparse
 import datasets
+import numpy as np
 import os
+import torch
 import wandb
+
 
 from dsi.dataset.data import search_dataset
 from dsi.dataset.natural_questions import create_train_validation_dataset
+from torch.utils.data import DataLoader
 from transformers import (
     T5Tokenizer,
     T5ForConditionalGeneration,
-    EvalPrediction,
     DataCollatorForSeq2Seq,
     Seq2SeqTrainingArguments,
     Seq2SeqTrainer,
+    TrainerCallback,
+    TrainerState,
+    TrainerControl,
 )
-from typing import Dict, Any
+from typing import Dict
 
 
-def compute_metrics(preds: EvalPrediction) -> Dict[str, Any]:
-    """The only metric that really makes sense here is accuracy, since we are
-    only using a single beam. In theory we could use more beams but this is slow and only gives us the added benefit of
-    computing hits at 1 (since we only get the final top beam not all k top beams."""
-    equals = (preds.label_ids == preds.predictions).astype(int)
-    accuracy = equals.prod(axis=1).sum() / len(equals)
-    return {
-        "accuracy": accuracy,
-    }
+class EvalCallback(TrainerCallback):
+    def on_evaluate(
+        self,
+        args: Seq2SeqTrainingArguments,
+        state: TrainerState,
+        control: TrainerControl,
+        model: T5ForConditionalGeneration,
+        tokenizer: T5Tokenizer,
+        eval_dataloader: DataLoader,
+        **kwargs,
+    ):
+        """
+        Some annoying bits below based on # SEE: https://huggingface.co/docs/transformers/model_doc/t5#training
+        TODO: this is all specific to the T5 model, we should make this more generic.
+
+        * generated sequences all start with the pad_token_id (this is the decoder_start_token_id for T5)
+        * labels don't start with the pad_token_id
+        * labels are padded on the right with -100 (this is the ignore_index for the cross entropy loss)
+        * generated sequences are padded with the pad_token_id on the right
+        """
+        hits_at_1 = 0
+        hits_at_10 = 0
+        for batch in eval_dataloader:
+            inputs = batch["input_ids"]  # shape (batch_size, batch_input_len)
+            labels = batch["labels"].numpy()  # shape (batch_size, batch_output_len)
+
+            # pad start of labels with pad_token_id
+            labels = np.pad(
+                labels,
+                ((0, 0), (1, 0)),
+                mode="constant",
+                constant_values=tokenizer.pad_token_id,
+            )
+
+            # replace -100 with pad_token_id
+            labels = np.where(labels != -100, labels, tokenizer.pad_token_id)
+
+            # get the max sequence length in the labels batch after accounting for
+            # the pad_token_id at the start
+            batch_size, max_len = labels.shape
+
+            # add num_beams dimension to labels then tile
+            labels = np.tile(labels[:, np.newaxis, :], (1, 10, 1))
+            with torch.no_grad():
+                batch_beams = model.generate(
+                    inputs.to(model.device),
+                    max_length=max_len,
+                    num_beams=10,
+                    num_return_sequences=10,
+                    early_stopping=True,
+                )  # shape (batch_size*10, max_len)
+
+                batch_beams = batch_beams.reshape([batch_size, 10, max_len]).numpy(
+                    force=True
+                )  # shape (batch_size, 10, max_len)
+
+            equals = (batch_beams == labels).astype(int)
+            equals = np.prod(equals, axis=2)  # shape (batch_size, 10)
+
+            # bool type convertes value > 0 to True, then back to int converts
+            # True to 1
+            hits_at_10 += np.sum(equals, axis=1).astype(bool).astype(int).sum()
+            hits_at_1 += np.sum(equals[:, 0])
+
+        metrics = {
+            "eval_hits_at_1": hits_at_1 / len(eval_dataloader),
+            "eval_hits_at_10": hits_at_10 / len(eval_dataloader),
+        }
+        print(metrics)
+        wandb.log(metrics)
 
 
 def main():
@@ -104,15 +171,13 @@ def main():
     if args.load_dataset_from_disk:
         train_path = os.path.join(args.cache_dir, "train")
         val_path = os.path.join(args.cache_dir, "val")
-        index_path = os.path.join(args.cache_dir, "index")
         train = datasets.load_from_disk(train_path)
         val = datasets.load_from_disk(val_path)
-        index = datasets.load_from_disk(index_path)
+        ds = datasets.DatasetDict({"train": train, "val": val})
     else:
         ds = create_train_validation_dataset(
             args.cache_dir, args.num_train, args.num_val, args.seed
         )
-        train, val, index = ds["train"], ds["val"], ds["index"]
 
     tokenizer = T5Tokenizer.from_pretrained(
         args.base_model_name, cache_dir=args.cache_dir
@@ -125,23 +190,15 @@ def main():
         args.max_doc_len = tokenizer.model_max_length
     assert args.max_doc_len <= tokenizer.model_max_length
 
-    train = search_dataset(
-        train,
-        index,
+    ds = search_dataset(
+        ds,
         tokenizer,
         args.max_doc_len,
         seed=args.seed,
-        ratio_indexing_to_retrieval=args.ratio_indexing_to_retrieval_training,
+        ratio_indexing_to_retrieval_train=args.ratio_indexing_to_retrieval_training,
+        ratio_indexing_to_retrieval_val=args.ratio_indexing_to_retrieval_validation,
     )
-
-    val = search_dataset(
-        val,
-        index,
-        tokenizer,
-        args.max_doc_len,
-        seed=args.seed,
-        ratio_indexing_to_retrieval=args.ratio_indexing_to_retrieval_validation,
-    )
+    train, val = ds["train"], ds["val"]
 
     training_args = Seq2SeqTrainingArguments(
         output_dir=args.out_dir,
@@ -156,7 +213,8 @@ def main():
         per_device_eval_batch_size=args.batch_size,
         report_to="wandb",
         predict_with_generate=True,
-        generation_num_beams=1,
+        generation_num_beams=10,
+        generation_max_length=20,
     )
 
     trainer = Seq2SeqTrainer(
@@ -170,7 +228,7 @@ def main():
             padding="longest",
             label_pad_token_id=-100,  # SEE: https://huggingface.co/docs/transformers/model_doc/t5#training
         ),
-        compute_metrics=compute_metrics,
+        callbacks=[EvalCallback()],
     )
 
     trainer.train()

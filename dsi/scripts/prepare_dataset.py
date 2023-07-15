@@ -35,11 +35,8 @@ if __name__ == "__main__":
 
     train_path = os.path.join(args.out_dir, "train")
     val_path = os.path.join(args.out_dir, "val")
-    index_path = os.path.join(args.out_dir, "index")
     ds["train"].save_to_disk(train_path)
     ds["val"].save_to_disk(val_path)
-    ds["index"].save_to_disk(index_path)
 
     print(f"Train dataset saved to {train_path}")
     print(f"Validation dataset saved to {val_path}")
-    print(f"Index dataset saved to {index_path}")
