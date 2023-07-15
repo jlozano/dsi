@@ -44,6 +44,7 @@ class EvalCallback(TrainerCallback):
         """
         hits_at_1 = 0
         hits_at_10 = 0
+        num = 0
         for batch in eval_dataloader:
             inputs = batch["input_ids"]  # shape (batch_size, batch_input_len)
             labels = batch["labels"].numpy()  # shape (batch_size, batch_output_len)
@@ -85,10 +86,11 @@ class EvalCallback(TrainerCallback):
             # True to 1
             hits_at_10 += np.sum(equals, axis=1).astype(bool).astype(int).sum()
             hits_at_1 += np.sum(equals[:, 0])
+            num += batch_size
 
         metrics = {
-            "eval_hits_at_1": hits_at_1 / len(eval_dataloader),
-            "eval_hits_at_10": hits_at_10 / len(eval_dataloader),
+            "eval_hits_at_1": hits_at_1 / num,
+            "eval_hits_at_10": hits_at_10 / num,
         }
         print(metrics)
         wandb.log(metrics)
