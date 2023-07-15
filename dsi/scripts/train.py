@@ -207,6 +207,7 @@ def main():
     parser.add_argument("--logging_steps", type=int, default=1000)
     parser.add_argument("--learning_rate", type=float, default=4e-5)
     parser.add_argument("--save_steps", type=int, default=1000)
+    parser.add_argument("--num_workers", type=int, default=4)
 
     args = parser.parse_args()
 
@@ -261,6 +262,7 @@ def main():
         remove_unused_columns=True,  # otherwise the extra columns cause issues for forward pass
         save_strategy="steps",
         save_steps=args.save_steps,
+        dataloader_num_workers=args.num_workers,
     )
 
     trainer = Seq2SeqTrainer(
