@@ -203,6 +203,10 @@ def main():
         action="store_true",
         help="Add this flag if training on a Mac otherwise training will raise an error",
     )
+    parser.add_argument("--eval_steps", type=int, default=1000)
+    parser.add_argument("--logging_steps", type=int, default=1000)
+    parser.add_argument("--learning_rate", type=float, default=4e-5)
+    parser.add_argument("--save_steps", type=int, default=1000)
 
     args = parser.parse_args()
 
@@ -245,18 +249,18 @@ def main():
         output_dir=args.out_dir,
         max_steps=args.num_epochs * len(train) // args.batch_size,
         evaluation_strategy="steps",
-        eval_steps=1,
+        eval_steps=args.eval_steps,
         logging_strategy="steps",
-        logging_steps=1,
+        logging_steps=args.logging_steps,
         use_mps_device=args.use_mps_device,
-        learning_rate=4e-5,
+        learning_rate=args.learning_rate,
         per_device_train_batch_size=args.batch_size,
         per_device_eval_batch_size=args.batch_size,
         report_to="wandb",
-        predict_with_generate=True,
-        generation_num_beams=10,
-        generation_max_length=20,
+        predict_with_generate=False,  # we do eval manually so we just get the loss from the default eval
         remove_unused_columns=True,  # otherwise the extra columns cause issues for forward pass
+        save_strategy="steps",
+        save_steps=args.save_steps,
     )
 
     trainer = Seq2SeqTrainer(
