@@ -12,17 +12,37 @@ from torch.utils.data import DataLoader
 from transformers import (
     T5Tokenizer,
     T5ForConditionalGeneration,
-    DataCollatorForSeq2Seq,
     Seq2SeqTrainingArguments,
     Seq2SeqTrainer,
     TrainerCallback,
     TrainerState,
     TrainerControl,
+    DataCollatorForSeq2Seq,
 )
 from typing import Dict
 
 
 class EvalCallback(TrainerCallback):
+    def __init__(
+        self,
+        eval_dataset: datasets.Dataset,
+        tokenizer: T5Tokenizer,
+        args: Seq2SeqTrainingArguments,
+    ):
+        """we need to pass in the eval dataset manually because the extra columns cause problems with the trainer"""
+        self._dataloader = DataLoader(
+            eval_dataset,
+            batch_size=args.per_device_eval_batch_size,
+            collate_fn=DataCollatorForSeq2Seq(
+                tokenizer,
+                padding="longest",
+                label_pad_token_id=-100,  # SEE: https://huggingface.co/docs/transformers/model_doc/t5#training
+            ),
+            shuffle=False,
+            drop_last=False,
+            num_workers=args.dataloader_num_workers,
+        )
+
     def on_evaluate(
         self,
         args: Seq2SeqTrainingArguments,
@@ -30,7 +50,6 @@ class EvalCallback(TrainerCallback):
         control: TrainerControl,
         model: T5ForConditionalGeneration,
         tokenizer: T5Tokenizer,
-        eval_dataloader: DataLoader,
         **kwargs,
     ):
         """
@@ -42,12 +61,16 @@ class EvalCallback(TrainerCallback):
         * labels are padded on the right with -100 (this is the ignore_index for the cross entropy loss)
         * generated sequences are padded with the pad_token_id on the right
         """
-        hits_at_1 = 0
-        hits_at_10 = 0
-        num = 0
-        for batch in eval_dataloader:
+        hits_at_1_retrieval = 0
+        hits_at_10_retrieval = 0
+        num_retrieval = 0
+        hits_at_1_indexing = 0
+        hits_at_10_indexing = 0
+        num_indexing = 0
+        for batch in self._dataloader:
             inputs = batch["input_ids"]  # shape (batch_size, batch_input_len)
             labels = batch["labels"].numpy()  # shape (batch_size, batch_output_len)
+            is_indexing = np.array(batch["is_indexing"])  # shape (batch_size,)
 
             # pad start of labels with pad_token_id
             labels = np.pad(
@@ -84,13 +107,29 @@ class EvalCallback(TrainerCallback):
 
             # bool type convertes value > 0 to True, then back to int converts
             # True to 1
-            hits_at_10 += np.sum(equals, axis=1).astype(bool).astype(int).sum()
-            hits_at_1 += np.sum(equals[:, 0])
-            num += batch_size
+            hits_at_10 = (
+                np.sum(equals, axis=1).astype(bool).astype(int)
+            )  # shape (batch_size,)
+
+            hits_at_10_retrieval += np.sum(hits_at_10[~is_indexing])
+            hits_at_10_indexing += np.sum(hits_at_10[is_indexing])
+
+            hits_at_1 = equals[:, 0]  # shape (batch_size,)
+            hits_at_1_retrieval += np.sum(hits_at_1[~is_indexing])
+            hits_at_1_indexing += np.sum(hits_at_1[is_indexing])
+
+            num_indexing += np.sum(is_indexing)
+            num_retrieval += np.sum(~is_indexing)
 
         metrics = {
-            "eval_hits_at_1": hits_at_1 / num,
-            "eval_hits_at_10": hits_at_10 / num,
+            "eval_hits_at_1": (hits_at_1_retrieval + hits_at_1_indexing)
+            / (num_retrieval + num_indexing),
+            "eval_hits_at_10": (hits_at_10_retrieval + hits_at_10_indexing)
+            / (num_retrieval + num_indexing),
+            "eval_hits_at_1_retrieval": hits_at_1_retrieval / num_retrieval,
+            "eval_hits_at_10_retrieval": hits_at_10_retrieval / num_retrieval,
+            "eval_hits_at_1_indexing": hits_at_1_indexing / num_indexing,
+            "eval_hits_at_10_indexing": hits_at_10_indexing / num_indexing,
         }
         print(metrics)
         wandb.log(metrics)
@@ -155,7 +194,7 @@ def main():
     parser.add_argument(
         "--ratio_indexing_to_retrieval_validation",
         type=float,
-        default=0,
+        default=1,
         help="Ratio of indexing examples to retrieval examples in validation set",
     )
     parser.add_argument("--batch_size", type=int, default=8)
@@ -217,6 +256,7 @@ def main():
         predict_with_generate=True,
         generation_num_beams=10,
         generation_max_length=20,
+        remove_unused_columns=True,  # otherwise the extra columns cause issues for forward pass
     )
 
     trainer = Seq2SeqTrainer(
@@ -230,7 +270,7 @@ def main():
             padding="longest",
             label_pad_token_id=-100,  # SEE: https://huggingface.co/docs/transformers/model_doc/t5#training
         ),
-        callbacks=[EvalCallback()],
+        callbacks=[EvalCallback(val, tokenizer, training_args)],
     )
 
     trainer.train()
