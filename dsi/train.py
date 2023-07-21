@@ -6,8 +6,9 @@ import torch
 import wandb
 
 
-from dsi.dataset.data import search_dataset
-from dsi.dataset.natural_questions import create_train_validation_dataset
+from dataset.data import search_dataset
+from dataset.dataloader import SearchDataset
+from dataset.natural_questions import create_train_validation_dataset
 from torch.utils.data import DataLoader
 from transformers import (
     T5Tokenizer,
@@ -144,6 +145,11 @@ def main():
         help="This is either used as a cache dir for the dataset or the directory where the dataset is stored if --load_dataset_from_disk is used. Also used as a cache for pretrained models.",
     )
     parser.add_argument(
+        "--dataset_dir",
+        type=str,
+        help="Directory with saved training data",
+    )
+    parser.add_argument(
         "--out_dir",
         required=True,
         type=str,
@@ -203,31 +209,60 @@ def main():
         action="store_true",
         help="Add this flag if training on a Mac otherwise training will raise an error",
     )
+    parser.add_argument("--num_steps", type=int, required=True)
     parser.add_argument("--eval_steps", type=int, default=1000)
     parser.add_argument("--logging_steps", type=int, default=1000)
     parser.add_argument("--learning_rate", type=float, default=4e-5)
     parser.add_argument("--save_steps", type=int, default=1000)
     parser.add_argument("--num_workers", type=int, default=4)
+    parser.add_argument("--label_size", type=int, default=8)
 
     args = parser.parse_args()
 
     wandb.login()
     wandb.init(project="DSI", name="test")
 
+    tokenizer = T5Tokenizer.from_pretrained(
+        args.base_model_name, cache_dir=args.cache_dir
+    )
+
     if args.load_dataset_from_disk:
-        train_path = os.path.join(args.cache_dir, "train")
-        val_path = os.path.join(args.cache_dir, "val")
-        train = datasets.load_from_disk(train_path)
-        val = datasets.load_from_disk(val_path)
-        ds = datasets.DatasetDict({"train": train, "val": val})
+        index_file = os.path.join(args.dataset_dir, "index")
+        query_train = os.path.join(args.dataset_dir, "query_train")
+        query_val = os.path.join(args.dataset_dir, "query_val")
+
+        train = SearchDataset(
+            index_file=index_file,
+            query_file=query_train,
+            label_size=args.label_size,
+            max_length=args.max_doc_len,
+            ratio_indexing_to_query=args.ratio_indexing_to_retrieval_training,
+            tokenizer=tokenizer,
+            seed=args.seed
+        )
+        val = SearchDataset(
+            index_file=index_file,
+            query_file=query_val,
+            label_size=args.label_size,
+            max_length=args.max_doc_len,
+            ratio_indexing_to_query=args.ratio_indexing_to_retrieval_validation,
+            tokenizer=tokenizer,
+            seed=args.seed
+        )
     else:
         ds = create_train_validation_dataset(
             args.cache_dir, args.num_train, args.num_val, args.seed
         )
+        ds = search_dataset(
+            ds,
+            tokenizer,
+            args.max_doc_len,
+            seed=args.seed,
+            ratio_indexing_to_retrieval_train=args.ratio_indexing_to_retrieval_training,
+            ratio_indexing_to_retrieval_val=args.ratio_indexing_to_retrieval_validation,
+        )
+        train, val = ds["train"], ds["val"]
 
-    tokenizer = T5Tokenizer.from_pretrained(
-        args.base_model_name, cache_dir=args.cache_dir
-    )
     base_model = T5ForConditionalGeneration.from_pretrained(
         args.base_model_name, cache_dir=args.cache_dir
     )
@@ -236,19 +271,9 @@ def main():
         args.max_doc_len = tokenizer.model_max_length
     assert args.max_doc_len <= tokenizer.model_max_length
 
-    ds = search_dataset(
-        ds,
-        tokenizer,
-        args.max_doc_len,
-        seed=args.seed,
-        ratio_indexing_to_retrieval_train=args.ratio_indexing_to_retrieval_training,
-        ratio_indexing_to_retrieval_val=args.ratio_indexing_to_retrieval_validation,
-    )
-    train, val = ds["train"], ds["val"]
-
     training_args = Seq2SeqTrainingArguments(
         output_dir=args.out_dir,
-        max_steps=args.num_epochs * len(train) // args.batch_size,
+        max_steps=args.num_steps,
         evaluation_strategy="steps",
         eval_steps=args.eval_steps,
         logging_strategy="steps",
