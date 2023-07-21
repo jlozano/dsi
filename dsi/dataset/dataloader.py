@@ -20,6 +20,7 @@ class SearchDataset(torch.utils.data.IterableDataset):
         label_length: int = 8,
         max_length: int = 32,
         ratio_index_to_query: float = 32,
+        num_queries: int = -1,
     ):
         self.index_file = index_file
         self.query_file = query_file
@@ -28,6 +29,7 @@ class SearchDataset(torch.utils.data.IterableDataset):
         self.tokenizer = tokenizer
         self.ratio_index_to_query = ratio_index_to_query
         self.rng = random.Random(seed)
+        self.num_queries = num_queries
 
     def _yield_index(self):
         while True:
@@ -48,8 +50,9 @@ class SearchDataset(torch.utils.data.IterableDataset):
     def __iter__(self):
         index_gen = self._yield_index()
         query_gen = self._yield_query()
+        query_count = 0
 
-        while True:
+        while self.num_queries < 0 or query_count < self.num_queries:
             r = self.rng.uniform(0, self.ratio_index_to_query + 1.0)
             if r < self.ratio_index_to_query:
                 sample = next(index_gen)
@@ -57,6 +60,7 @@ class SearchDataset(torch.utils.data.IterableDataset):
             else:
                 sample = next(query_gen)
                 isindexing = False
+                query_count += 1
 
             max_input_ids = sample["input_ids"][: self.max_length]
             max_attn_mask = sample["attention_mask"][: self.max_length]
@@ -65,7 +69,7 @@ class SearchDataset(torch.utils.data.IterableDataset):
                     "input_ids": max_input_ids,
                     "attention_mask": max_attn_mask,
                     "labels": self._tokenize_docid(sample["docid"]),
-                    "isindexing": isindexing,
+                    "is_indexing": isindexing,
                 }
             )
             del sample["docid"]

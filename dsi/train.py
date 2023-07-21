@@ -195,6 +195,7 @@ def main():
     parser.add_argument("--save_steps", type=int, default=1000)
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--label_length", type=int, default=8)
+    parser.add_argument("--num_eval_queries", type=int, default=1000)
 
     args = parser.parse_args()
 
@@ -230,6 +231,7 @@ def main():
         ratio_index_to_query=args.ratio_indexing_to_query_val,
         tokenizer=tokenizer,
         seed=args.seed,
+        num_queries=args.num_eval_queries,
     )
 
     base_model = T5ForConditionalGeneration.from_pretrained(
