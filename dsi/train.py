@@ -6,9 +6,7 @@ import torch
 import wandb
 
 
-from dataset.data import search_dataset
 from dataset.dataloader import SearchDataset
-from dataset.natural_questions import create_train_validation_dataset
 from torch.utils.data import DataLoader
 from transformers import (
     T5Tokenizer,
@@ -20,7 +18,6 @@ from transformers import (
     TrainerControl,
     DataCollatorForSeq2Seq,
 )
-from typing import Dict
 
 
 class EvalCallback(TrainerCallback):
@@ -147,7 +144,7 @@ def main():
     parser.add_argument(
         "--dataset_dir",
         type=str,
-        help="Directory with saved training data",
+        help="Directory with saved train/val/index data",
     )
     parser.add_argument(
         "--out_dir",
@@ -156,29 +153,11 @@ def main():
         help="Directory to save checkpoints and logs",
     )
     parser.add_argument(
-        "--load_dataset_from_disk",
-        action="store_true",
-        help="Load the train/validation dataset directly from disk, this is useful if the training machine is not the same as the machine used to prepare the dataset",
-    )
-    parser.add_argument(
-        "--num_train",
-        type=int,
-        default=10000,
-        help="Number of training query and doc pairs, only used if --load_dataset_from_disk is not used",
-    )
-    parser.add_argument(
-        "--num_val",
-        type=int,
-        default=2000,
-        help="Number of validation query and doc pairs, only used if --load_dataset_from_disk is not used",
-    )
-    parser.add_argument(
         "--seed",
         type=int,
         default=42,
         help="Random seed used for all random operations",
     )
-    parser.add_argument("--num_epochs", type=int, default=10, help="Number of epochs")
     parser.add_argument(
         "--base_model_name",
         type=str,
@@ -186,19 +165,19 @@ def main():
         help="Base model name, must be a T5 model",
     )
     parser.add_argument(
-        "--max_doc_len",
+        "--max_doc_length",
         type=int,
         default=32,
         help="Maximum number of tokens in a document, if -1 then the maximum length associated with the model is used",
     )
     parser.add_argument(
-        "--ratio_indexing_to_retrieval_training",
+        "--ratio_indexing_to_query_train",
         type=float,
         default=32,
         help="Ratio of indexing examples to retrieval examples in training set",
     )
     parser.add_argument(
-        "--ratio_indexing_to_retrieval_validation",
+        "--ratio_indexing_to_query_val",
         type=float,
         default=1,
         help="Ratio of indexing examples to retrieval examples in validation set",
@@ -215,7 +194,7 @@ def main():
     parser.add_argument("--learning_rate", type=float, default=4e-5)
     parser.add_argument("--save_steps", type=int, default=1000)
     parser.add_argument("--num_workers", type=int, default=4)
-    parser.add_argument("--label_size", type=int, default=8)
+    parser.add_argument("--label_length", type=int, default=8)
 
     args = parser.parse_args()
 
@@ -226,50 +205,36 @@ def main():
         args.base_model_name, cache_dir=args.cache_dir
     )
 
-    if args.load_dataset_from_disk:
-        index_file = os.path.join(args.dataset_dir, "index")
-        query_train = os.path.join(args.dataset_dir, "query_train")
-        query_val = os.path.join(args.dataset_dir, "query_val")
+    if args.max_doc_length == -1:
+        args.max_doc_length = tokenizer.model_max_length
+    assert args.max_doc_length <= tokenizer.model_max_length
 
-        train = SearchDataset(
-            index_file=index_file,
-            query_file=query_train,
-            label_size=args.label_size,
-            max_length=args.max_doc_len,
-            ratio_indexing_to_query=args.ratio_indexing_to_retrieval_training,
-            tokenizer=tokenizer,
-            seed=args.seed
-        )
-        val = SearchDataset(
-            index_file=index_file,
-            query_file=query_val,
-            label_size=args.label_size,
-            max_length=args.max_doc_len,
-            ratio_indexing_to_query=args.ratio_indexing_to_retrieval_validation,
-            tokenizer=tokenizer,
-            seed=args.seed
-        )
-    else:
-        ds = create_train_validation_dataset(
-            args.cache_dir, args.num_train, args.num_val, args.seed
-        )
-        ds = search_dataset(
-            ds,
-            tokenizer,
-            args.max_doc_len,
-            seed=args.seed,
-            ratio_indexing_to_retrieval_train=args.ratio_indexing_to_retrieval_training,
-            ratio_indexing_to_retrieval_val=args.ratio_indexing_to_retrieval_validation,
-        )
-        train, val = ds["train"], ds["val"]
+    index_file = os.path.join(args.dataset_dir, "index")
+    query_train = os.path.join(args.dataset_dir, "query_train")
+    query_val = os.path.join(args.dataset_dir, "query_val")
+
+    train = SearchDataset(
+        index_file=index_file,
+        query_file=query_train,
+        label_length=args.label_length,
+        max_length=args.max_doc_length,
+        ratio_index_to_query=args.ratio_indexing_to_query_train,
+        tokenizer=tokenizer,
+        seed=args.seed,
+    )
+    val = SearchDataset(
+        index_file=index_file,
+        query_file=query_val,
+        label_length=args.label_length,
+        max_length=args.max_doc_length,
+        ratio_index_to_query=args.ratio_indexing_to_query_val,
+        tokenizer=tokenizer,
+        seed=args.seed,
+    )
 
     base_model = T5ForConditionalGeneration.from_pretrained(
         args.base_model_name, cache_dir=args.cache_dir
     )
-
-    if args.max_doc_len == -1:
-        args.max_doc_len = tokenizer.model_max_length
-    assert args.max_doc_len <= tokenizer.model_max_length
 
     training_args = Seq2SeqTrainingArguments(
         output_dir=args.out_dir,

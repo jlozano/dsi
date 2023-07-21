@@ -12,7 +12,7 @@ if __name__ == "__main__":
     parser.add_argument("--cache_dir", type=str, required=True)
     parser.add_argument("--index_file", type=str, required=True)
     parser.add_argument("--query_file", type=str, required=True)
-    parser.add_argument("--label_size", type=int, default=8)
+    parser.add_argument("--label_length", type=int, default=8)
     parser.add_argument("--max_length", type=int, default=32)
     parser.add_argument("--ratio_index_query", type=float, default=32.0)
     parser.add_argument(
@@ -26,7 +26,6 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-
     tokenizer = T5Tokenizer.from_pretrained(
         args.base_model_name, cache_dir=args.cache_dir
     )
@@ -34,11 +33,11 @@ if __name__ == "__main__":
     dataset = SearchDataset(
         index_file=args.index_file,
         query_file=args.query_file,
-        label_size=args.label_size,
+        label_length=args.label_length,
         max_length=args.max_length,
-        ratio_indexing_to_query=args.ratio_index_query,
+        ratio_index_to_query=args.ratio_index_query,
         tokenizer=tokenizer,
-        seed=args.seed
+        seed=args.seed,
     )
 
     count = 0

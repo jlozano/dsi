@@ -4,7 +4,7 @@ import os
 
 from transformers import T5Tokenizer
 
-from dataset.natural_questions import create_train_validation_dataset
+from dataset.natural_questions import create_dataset
 
 
 if __name__ == "__main__":
@@ -20,7 +20,7 @@ if __name__ == "__main__":
         required=True,
         type=int,
         default=100,
-        help="Number of NQ entries to consume"
+        help="Number of NQ entries to consume",
     )
     parser.add_argument(
         "--val_pct",
@@ -45,11 +45,11 @@ if __name__ == "__main__":
         args.base_model_name, cache_dir=args.cache_dir
     )
 
-    create_train_validation_dataset(
+    create_dataset(
         cache_dir=args.cache_dir,
         out_dir=args.out_dir,
         num_nq=args.num_nq,
-        val_pct=args.val_pct/100.0,
+        val_fraction=args.val_pct / 100.0,
         tokenizer=tokenizer,
-        seed=args.seed
+        seed=args.seed,
     )

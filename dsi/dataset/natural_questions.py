@@ -8,20 +8,29 @@ from transformers import PreTrainedTokenizer
 from tqdm import tqdm
 
 
-def create_train_validation_dataset(
+def create_dataset(
     cache_dir: str,
     out_dir: str,
     num_nq: int,
-    val_pct: float,
+    val_fraction: float,
     tokenizer: PreTrainedTokenizer,
-    seed: int):
+    seed: int,
+):
     """
     WARNING: the original dataset is 143gb and we need to download all of it before we can do the split.
 
-    The columns in the returned dataset are:
-        - doc_text: str
-        - query_text: str
-        - doc_id: str
+    Creates 3 files:
+        * index: contains the document text (tokenized) and the string docid, at out_dir/index
+        * query_train: contains the query text (tokenized) and the string docid, at out_dir/query_train
+        * query_val: contains the query text (tokenized) and the string docid, at out_dir/query_val
+
+    All 3 files have one json object per line, each json object contains the fields "input_ids", "attention_mask", and "docid".
+
+    Args:
+        * cache_dir: directory to cache the full dataset (used by huggingface)
+        * out_dir: directory to save the dataset in
+        * num_nq: total number of NQ entries to consume
+        * val_fraction: fraction of NQ queries to hold out for validation
     """
 
     def map_row(row):
@@ -56,18 +65,20 @@ def create_train_validation_dataset(
             "doc_attention_mask": tok_doc["attention_mask"],
             "query_input_ids": tok_query["input_ids"],
             "query_attention_mask": tok_query["attention_mask"],
-            "docid": h
+            "docid": h,
         }
 
     ds = datasets.load_dataset("natural_questions", cache_dir=cache_dir, split="train")
-    ds = ds.train_test_split(test_size=1, train_size=num_nq, seed=seed)
+    ds = ds.train_test_split(
+        test_size=1, train_size=num_nq, seed=seed
+    )  # set test size to 1 otherwise huggingface will complain
     ds = ds.map(lambda x: map_row(x))
 
     rng = random.Random(seed)
 
-    index_file = open(os.path.join(out_dir, "index"), 'w')
-    query_train_file = open(os.path.join(out_dir, "query_train"), 'w')
-    query_val_file = open(os.path.join(out_dir, "query_val"), 'w')
+    index_file = open(os.path.join(out_dir, "index"), "w")
+    query_train_file = open(os.path.join(out_dir, "query_train"), "w")
+    query_val_file = open(os.path.join(out_dir, "query_val"), "w")
 
     for sample in tqdm(ds["train"], desc="NQ Samples"):
         index_sample = {
@@ -82,7 +93,7 @@ def create_train_validation_dataset(
             "attention_mask": sample["query_attention_mask"],
             "docid": sample["docid"],
         }
-        if rng.uniform(0, 1) >= val_pct:
+        if rng.uniform(0, 1) >= val_fraction:
             print(json.dumps(query_sample), file=query_train_file)
         else:
             print(json.dumps(query_sample), file=query_val_file)
