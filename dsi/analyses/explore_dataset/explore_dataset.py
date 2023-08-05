@@ -29,6 +29,10 @@ def main():
         type=str,
         default="t5-small",
     )
+    parser.add_argument(
+        "--print_queries",
+        action="store_true",
+    )
     args = parser.parse_args()
 
     tokenizer = T5Tokenizer.from_pretrained(
@@ -64,7 +68,7 @@ def main():
             assert docid in seen_index
             if docid not in seen_train:
                 count_not_in_train += 1
-            else:
+            elif args.print_queries:
                 decoded = tokenizer.decode(h["input_ids"])
                 print(f"For {docid}")
                 print(f"  Train queries: {seen_train[docid]}")
@@ -78,6 +82,8 @@ def main():
     print("Max repeats in train: ", max([len(v) for v in seen_train.values()]))
     print("Max repeats in val: ", max(seen_val.values()))
     print("Count in val and not in train: ", count_not_in_train)
+    print("Num queries train: ", sum([len(v) for v in seen_train.values()]))
+    print("Num queries val: ", sum(seen_val.values()))
 
 
 if __name__ == "__main__":
