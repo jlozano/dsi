@@ -103,7 +103,14 @@ class EvalCallback(TrainerCallback):
                     force=True
                 )  # shape (batch_size, 10, max_len)
 
-            equals = (batch_beams == labels).astype(int)
+            if batch_beams.shape != labels.shape:
+                # because of early stopping shapes may not match and
+                # this causes numpy to have issues with the comparison
+                # given that we are doing exact matching we can just
+                # zero out the equals array
+                equals = np.zeros(batch_beams.shape)
+            else:
+                equals = (batch_beams == labels).astype(int)
             equals = np.prod(equals, axis=2)  # shape (batch_size, 10)
 
             # bool type convertes value > 0 to True, then back to int converts
