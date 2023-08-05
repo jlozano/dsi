@@ -196,6 +196,8 @@ def main():
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--label_length", type=int, default=8)
     parser.add_argument("--num_eval_queries", type=int, default=1000)
+    parser.add_argument("--batch_size_eval", type=int, default=64)
+    parser.add_argument("--sample_doc_chunks", action="store_true")
 
     args = parser.parse_args()
 
@@ -222,6 +224,7 @@ def main():
         ratio_index_to_query=args.ratio_indexing_to_query_train,
         tokenizer=tokenizer,
         seed=args.seed,
+        sample_doc_chunks=args.sample_doc_chunks,
     )
     val = SearchDataset(
         index_file=index_file,
@@ -232,6 +235,7 @@ def main():
         tokenizer=tokenizer,
         seed=args.seed,
         num_queries=args.num_eval_queries,
+        sample_doc_chunks=args.sample_doc_chunks,
     )
 
     base_model = T5ForConditionalGeneration.from_pretrained(
@@ -248,7 +252,7 @@ def main():
         use_mps_device=args.use_mps_device,
         learning_rate=args.learning_rate,
         per_device_train_batch_size=args.batch_size,
-        per_device_eval_batch_size=args.batch_size,
+        per_device_eval_batch_size=args.batch_size_eval,
         report_to="wandb",
         predict_with_generate=False,  # we do eval manually so we just get the loss from the default eval
         remove_unused_columns=True,  # otherwise the extra columns cause issues for forward pass

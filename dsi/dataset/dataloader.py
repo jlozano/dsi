@@ -21,6 +21,7 @@ class SearchDataset(torch.utils.data.IterableDataset):
         max_length: int = 32,
         ratio_index_to_query: float = 32,
         num_queries: int = -1,
+        sample_doc_chunks: bool = False,
     ):
         self.index_file = index_file
         self.query_file = query_file
@@ -30,6 +31,7 @@ class SearchDataset(torch.utils.data.IterableDataset):
         self.ratio_index_to_query = ratio_index_to_query
         self.rng = random.Random(seed)
         self.num_queries = num_queries
+        self.sample_doc_chunks = sample_doc_chunks
 
     def _yield_index(self):
         while True:
@@ -64,6 +66,10 @@ class SearchDataset(torch.utils.data.IterableDataset):
 
             max_input_ids = sample["input_ids"][: self.max_length]
             max_attn_mask = sample["attention_mask"][: self.max_length]
+            if self.sample_doc_chunks and isindexing:
+                idx = self.rng.randint(0, len(sample["input_ids"]))
+                max_input_ids = sample["input_ids"][idx : idx + self.max_length]
+                max_attn_mask = sample["attention_mask"][idx : idx + self.max_length]
             sample.update(
                 {
                     "input_ids": max_input_ids,
