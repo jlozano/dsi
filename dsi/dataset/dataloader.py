@@ -67,7 +67,8 @@ class SearchDataset(torch.utils.data.IterableDataset):
             max_input_ids = sample["input_ids"][: self.max_length]
             max_attn_mask = sample["attention_mask"][: self.max_length]
             if self.sample_doc_chunks and isindexing:
-                idx = self.rng.randint(0, len(sample["input_ids"]))
+                end = len(sample["input_ids"]) - self.max_length
+                idx = 0 if end <= 0 else self.rng.randint(0, end)
                 max_input_ids = sample["input_ids"][idx : idx + self.max_length]
                 max_attn_mask = sample["attention_mask"][idx : idx + self.max_length]
             sample.update(
