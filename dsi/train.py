@@ -96,6 +96,9 @@ class EvalCallback(TrainerCallback):
                     early_stopping=True,
                 )  # shape (batch_size*10, max_len)
 
+                # because of early stopping we need to recompute the max_len
+                max_len = batch_beams.shape[1]
+
                 batch_beams = batch_beams.reshape([batch_size, 10, max_len]).numpy(
                     force=True
                 )  # shape (batch_size, 10, max_len)
