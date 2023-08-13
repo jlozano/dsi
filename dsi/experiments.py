@@ -67,6 +67,9 @@ class ExperimentConfig(_ExperimentID):
     def model_dir(self) -> str:
         return self._path("model")
 
+    def wandb_dir(self) -> str:
+        return self._path("wandb")
+
 
 _CONFIGS: List[ExperimentConfig] = [
     ExperimentConfig(

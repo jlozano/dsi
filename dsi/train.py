@@ -193,6 +193,7 @@ def main():
             num_workers=args.num_workers,
             **dataclasses.asdict(config),
         ),
+        dir=config.wandb_dir(),
     )
 
     tokenizer = T5Tokenizer.from_pretrained(
