@@ -1,7 +1,7 @@
 #!/bin/bash
+WORK_DIR=~/dsi_data
 ./prepare_dataset.py \
-    --cache_dir=cache \
-    --out_dir=out \
-    --num_nq=12500 \
-    --val_pct=20 \
-    --base_model_name=t5-base
+    --experiment_name=sample_doc_chunks \
+    --experiment_run=sanity_check \
+    --huggingface_cache_dir=$WORK_DIR/cache \
+    --base_dir=$WORK_DIR 

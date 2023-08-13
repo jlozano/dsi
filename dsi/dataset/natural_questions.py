@@ -4,7 +4,6 @@ import datasets
 import hashlib
 import json
 import os
-import random
 
 from transformers import PreTrainedTokenizer
 from tqdm import tqdm

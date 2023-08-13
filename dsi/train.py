@@ -1,5 +1,7 @@
 import argparse
+import dataclasses
 import datasets
+import experiments
 import numpy as np
 import os
 import torch
@@ -146,128 +148,105 @@ class EvalCallback(TrainerCallback):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--cache_dir",
+        "--experiment_name",
         required=True,
         type=str,
-        help="This is either used as a cache dir for the dataset or the directory where the dataset is stored if --load_dataset_from_disk is used. Also used as a cache for pretrained models.",
+        help="Name of the experiment to run, see experiments.py",
     )
     parser.add_argument(
-        "--dataset_dir",
-        type=str,
-        help="Directory with saved train/val/index data",
-    )
-    parser.add_argument(
-        "--out_dir",
+        "--experiment_run",
         required=True,
         type=str,
-        help="Directory to save checkpoints and logs",
+        help="Human identifier for the run, see experiments.py",
     )
     parser.add_argument(
-        "--seed",
-        type=int,
-        default=42,
-        help="Random seed used for all random operations",
+        "--huggingface_cache_dir",
+        required=True,
     )
     parser.add_argument(
-        "--base_model_name",
-        type=str,
-        default="t5-small",
-        help="Base model name, must be a T5 model",
+        "--base_dir",
+        required=True,
+        help="base experiment directory, see experiments.py",
     )
-    parser.add_argument(
-        "--max_doc_length",
-        type=int,
-        default=32,
-        help="Maximum number of tokens in a document, if -1 then the maximum length associated with the model is used",
-    )
-    parser.add_argument(
-        "--ratio_indexing_to_query_train",
-        type=float,
-        default=32,
-        help="Ratio of indexing examples to retrieval examples in training set",
-    )
-    parser.add_argument(
-        "--ratio_indexing_to_query_val",
-        type=float,
-        default=1,
-        help="Ratio of indexing examples to retrieval examples in validation set",
-    )
-    parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument(
         "--use_mps_device",
         action="store_true",
         help="Add this flag if training on a Mac otherwise training will raise an error",
     )
-    parser.add_argument("--num_steps", type=int, required=True)
-    parser.add_argument("--eval_steps", type=int, default=1000)
     parser.add_argument("--logging_steps", type=int, default=1000)
-    parser.add_argument("--learning_rate", type=float, default=4e-5)
-    parser.add_argument("--save_steps", type=int, default=1000)
     parser.add_argument("--num_workers", type=int, default=4)
-    parser.add_argument("--label_length", type=int, default=8)
-    parser.add_argument("--num_eval_queries", type=int, default=1000)
-    parser.add_argument("--batch_size_eval", type=int, default=64)
-    parser.add_argument("--sample_doc_chunks", action="store_true")
-
     args = parser.parse_args()
 
-    wandb.login()
-    wandb.init(project="DSI", name="test")
-
-    tokenizer = T5Tokenizer.from_pretrained(
-        args.base_model_name, cache_dir=args.cache_dir
+    config = experiments.get_experiment_config(
+        args.experiment_name,
+        args.experiment_run,
+        args.base_dir,
     )
 
-    if args.max_doc_length == -1:
-        args.max_doc_length = tokenizer.model_max_length
-    assert args.max_doc_length <= tokenizer.model_max_length
+    wandb.login()
+    wandb.init(
+        project="DSI",
+        group=config.name,
+        name=config.run,
+        config=dict(
+            logging_steps=args.logging_steps,
+            num_workers=args.num_workers,
+            **dataclasses.asdict(config),
+        ),
+    )
 
-    index_file = os.path.join(args.dataset_dir, "index")
-    query_train = os.path.join(args.dataset_dir, "query_train")
-    query_val = os.path.join(args.dataset_dir, "query_val")
+    tokenizer = T5Tokenizer.from_pretrained(
+        config.base_model_name, cache_dir=args.huggingface_cache_dir
+    )
+
+    assert config.train.max_doc_length <= tokenizer.model_max_length
+
+    index_file = os.path.join(config.dataset_dir(), "index")
+    query_train = os.path.join(config.dataset_dir(), "query_train")
+    query_val = os.path.join(config.dataset_dir(), "query_val")
 
     train = SearchDataset(
         index_file=index_file,
         query_file=query_train,
-        label_length=args.label_length,
-        max_length=args.max_doc_length,
-        ratio_index_to_query=args.ratio_indexing_to_query_train,
+        label_length=config.train.label_length,
+        max_length=config.train.max_doc_length,
+        ratio_index_to_query=config.train.ratio_indexing_to_query_train,
         tokenizer=tokenizer,
-        seed=args.seed,
-        sample_doc_chunks=args.sample_doc_chunks,
+        seed=config.seed,
+        sample_doc_chunks=config.train.sample_doc_chunks,
     )
     val = SearchDataset(
         index_file=index_file,
         query_file=query_val,
-        label_length=args.label_length,
-        max_length=args.max_doc_length,
-        ratio_index_to_query=args.ratio_indexing_to_query_val,
+        label_length=config.train.label_length,
+        max_length=config.train.max_doc_length,
+        ratio_index_to_query=config.train.ratio_indexing_to_query_val,
         tokenizer=tokenizer,
-        seed=args.seed,
-        num_queries=args.num_eval_queries,
-        sample_doc_chunks=args.sample_doc_chunks,
+        seed=config.seed,
+        num_queries=config.train.num_eval_queries,
+        sample_doc_chunks=config.train.sample_doc_chunks,
     )
 
     base_model = T5ForConditionalGeneration.from_pretrained(
-        args.base_model_name, cache_dir=args.cache_dir
+        config.base_model_name, cache_dir=args.huggingface_cache_dir
     )
 
     training_args = Seq2SeqTrainingArguments(
-        output_dir=args.out_dir,
-        max_steps=args.num_steps,
+        output_dir=config.model_dir(),
+        max_steps=config.train.num_steps,
         evaluation_strategy="steps",
-        eval_steps=args.eval_steps,
+        eval_steps=config.train.eval_steps,
         logging_strategy="steps",
         logging_steps=args.logging_steps,
         use_mps_device=args.use_mps_device,
-        learning_rate=args.learning_rate,
-        per_device_train_batch_size=args.batch_size,
-        per_device_eval_batch_size=args.batch_size_eval,
+        learning_rate=config.train.learning_rate,
+        per_device_train_batch_size=config.train.batch_size,
+        per_device_eval_batch_size=config.train.batch_size_eval,
         report_to="wandb",
         predict_with_generate=False,  # we do eval manually so we just get the loss from the default eval
         remove_unused_columns=True,  # otherwise the extra columns cause issues for forward pass
         save_strategy="steps",
-        save_steps=args.save_steps,
+        save_steps=config.train.save_steps,
         dataloader_num_workers=args.num_workers,
     )
 
