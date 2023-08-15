@@ -31,7 +31,8 @@ class TrainConfig:
     label_length: int
     num_eval_queries: int
     batch_size_eval: int
-    sample_doc_chunks: bool
+    sample_doc_chunks_train: bool
+    sample_doc_chunks_val: bool
 
 
 @dataclasses.dataclass(frozen=True)
@@ -67,8 +68,8 @@ class ExperimentConfig(_ExperimentID):
     def model_dir(self) -> str:
         return self._path("model")
 
-    def wandb_dir(self) -> str:
-        return self._path("wandb")
+    def working_dir(self) -> str:
+        return self._path()
 
 
 _CONFIGS: List[ExperimentConfig] = [
@@ -96,9 +97,10 @@ _CONFIGS: List[ExperimentConfig] = [
             label_length=8,
             num_eval_queries=256,
             batch_size_eval=128,
-            sample_doc_chunks=True,
+            sample_doc_chunks_train=True,
+            sample_doc_chunks_val=True,
         ),
-        notes="Sanity check to make sure everything is working, sample doc chunks for doc representation for indexing task",
+        notes="Sanity check to make sure everything is working, sample doc chunks for doc representation for indexing task in train and val",
     ),
 ]
 

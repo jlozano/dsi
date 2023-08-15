@@ -64,7 +64,7 @@ def main():
             num_workers=args.num_workers,
             **dataclasses.asdict(config),
         ),
-        dir=config.wandb_dir(),
+        dir=config.working_dir(),
     )
 
     tokenizer = T5Tokenizer.from_pretrained(
@@ -85,7 +85,7 @@ def main():
         ratio_index_to_query=config.train.ratio_indexing_to_query_train,
         tokenizer=tokenizer,
         seed=config.seed,
-        sample_doc_chunks=config.train.sample_doc_chunks,
+        sample_doc_chunks=config.train.sample_doc_chunks_train,
     )
     val = SearchDataset(
         index_file=index_file,
@@ -96,7 +96,7 @@ def main():
         tokenizer=tokenizer,
         seed=config.seed,
         num_queries=config.train.num_eval_queries,
-        sample_doc_chunks=config.train.sample_doc_chunks,
+        sample_doc_chunks=config.train.sample_doc_chunks_val,
     )
 
     base_model = T5ForConditionalGeneration.from_pretrained(
