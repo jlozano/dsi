@@ -73,7 +73,7 @@ class ExperimentConfig(_ExperimentID):
 
 _CONFIGS: List[ExperimentConfig] = [
     ExperimentConfig(
-        name="sample_doc_chunks",
+        name="experiment_sample_doc_chunks",
         run="sanity_check",
         seed=42,
         base_model_name="t5-small",
