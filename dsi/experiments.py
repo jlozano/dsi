@@ -1,7 +1,7 @@
 import dataclasses
 import os
 
-from typing import List
+from typing import List, Optional
 
 
 @dataclasses.dataclass(frozen=True)
@@ -44,9 +44,10 @@ class _ExperimentID:
 
 
 @dataclasses.dataclass(frozen=True)
-class ExperimentConfig(_ExperimentID):
+class ExperimentConfig:
     """User's should initialize this below in _CONFIGS"""
 
+    eid: _ExperimentID
     seed: int
     base_model_name: str
     data: DatasetConfig
@@ -58,9 +59,11 @@ class ExperimentConfig(_ExperimentID):
         users should call get_experiment_config and pass this along,
         this is to avoid hardcoding the base_dir in this file.
     """
+    base_eid: Optional[_ExperimentID] = None
+    """If this is a sub-experiment, this should be the ExperimentID of the parent experiment"""
 
     def _path(self, *parts) -> str:
-        return os.path.join(self.base_dir, self.name, self.run, *parts)
+        return os.path.join(self.base_dir, self.eid.name, self.eid.run, *parts)
 
     def dataset_dir(self) -> str:
         return self._path("dataset")
@@ -72,10 +75,24 @@ class ExperimentConfig(_ExperimentID):
         return self._path()
 
 
+@dataclasses.dataclass(frozen=True)
+class ExperimentExtensionConfig:
+    eid: _ExperimentID
+    parent: _ExperimentID
+    seed: int
+
+    def config(self, parent: ExperimentConfig) -> ExperimentConfig:
+        return dataclasses.replace(
+            parent, eid=self.eid, seed=self.seed, base_eid=parent
+        )
+
+
 _CONFIGS: List[ExperimentConfig] = [
     ExperimentConfig(
-        name="experiment_sample_doc_chunks",
-        run="sanity_check",
+        eid=_ExperimentID(
+            name="experiment_sample_doc_chunks",
+            run="sanity_check",
+        ),
         seed=42,
         base_model_name="t5-small",
         data=DatasetConfig(
@@ -102,15 +119,71 @@ _CONFIGS: List[ExperimentConfig] = [
         ),
         notes="Sanity check to make sure everything is working, sample doc chunks for doc representation for indexing task in train and val",
     ),
+    ExperimentConfig(
+        eid=_ExperimentID(
+            name="test_save",
+            run="sanity_check",
+        ),
+        seed=42,
+        base_model_name="t5-small",
+        data=DatasetConfig(
+            num_nq=125,
+            val_pct=20,
+            force_train_docs_in_val=False,
+            prepend_title=False,
+            maximize_queries=False,
+        ),
+        train=TrainConfig(
+            max_doc_length=32,
+            ratio_indexing_to_query_train=32,
+            ratio_indexing_to_query_val=1,
+            batch_size=512,
+            num_steps=10,
+            eval_steps=100,
+            learning_rate=4e-5,
+            save_steps=1000,
+            label_length=8,
+            num_eval_queries=256,
+            batch_size_eval=128,
+            sample_doc_chunks_train=True,
+            sample_doc_chunks_val=True,
+        ),
+        notes="Sanity check to make sure everything is working, sample doc chunks for doc representation for indexing task in train and val",
+    ),
 ]
 
-assert len(_CONFIGS) == len(
-    set([f"{c.name}_{c.run}" for c in _CONFIGS])
+
+_EXTENSIONS: List[ExperimentExtensionConfig] = [
+    ExperimentExtensionConfig(
+        eid=_ExperimentID(
+            name="test_save_extension",
+            run="sanity_check",
+        ),
+        parent=_ExperimentID(
+            name="test_save",
+            run="sanity_check",
+        ),
+        seed=42,
+    ),
+]
+
+assert len(_CONFIGS) + len(_EXTENSIONS) == len(
+    set([c.eid for c in _CONFIGS]).union(set([c.eid for c in _EXTENSIONS]))
 ), "Duplicate experiment IDs"
 
 
 def get_experiment_config(name: str, run: str, base_dir: str) -> ExperimentConfig:
-    for c in _CONFIGS:
-        if name == c.name and run == c.run:
-            return dataclasses.replace(c, base_dir=base_dir)
-    raise ValueError(f"Unknown experiment ID: {name}/{run}")
+    eid = _ExperimentID(name=name, run=run)
+    matches = [c for c in _CONFIGS if c.eid == eid]
+    if len(matches) == 1:
+        return dataclasses.replace(matches[0], base_dir=base_dir)
+
+    matches = [c for c in _EXTENSIONS if c.eid == eid]
+    assert len(matches) == 1, f"Expected 1 match, got {len(matches)} for {eid}"
+    child = matches[0]
+
+    parents = [c for c in _CONFIGS if c.eid == child.parent]
+    assert len(parents) == 1, f"Expected 1 parent, got {len(parents)}"
+    parent = parents[0]
+    parent = dataclasses.replace(parent, base_dir=base_dir)
+    return child.config(parent)

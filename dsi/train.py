@@ -57,8 +57,8 @@ def main():
     wandb.login()
     wandb.init(
         project="DSI",
-        group=config.name,
-        name=config.run,
+        group=config.eid.name,
+        name=config.eid.run,
         config=dict(
             logging_steps=args.logging_steps,
             num_workers=args.num_workers,
